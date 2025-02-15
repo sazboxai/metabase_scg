@@ -1,6 +1,7 @@
 (ns metabase.models.ai-settings
   (:require [metabase.models.setting :refer [defsetting]]
-            [metabase.util.i18n :refer [deferred-tru]]))
+            [metabase.util.i18n :refer [deferred-tru]]
+            [metabase.models.setting :as setting]))
 
 ;; AI Configuration Settings
 (defsetting openai-api-key
@@ -39,4 +40,11 @@
   (deferred-tru "Port for the Index Database")
   :visibility :admin
   :type :integer
-  :encryption :no) 
+  :encryption :no)
+
+(setting/defsetting pinecone-api-key
+  (deferred-tru "Pinecone API Key for vector database")
+  :visibility :admin
+  :type :string
+  :sensitive? true
+  :encryption :when-encryption-key-set) 
