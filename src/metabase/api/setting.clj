@@ -5,6 +5,7 @@
    [metabase.api.common.validation :as validation]
    [metabase.api.macros :as api.macros]
    [metabase.models.setting :as setting]
+   [metabase.models.ai-settings]
    [metabase.util :as u]))
 
 (defn- do-with-setting-access-control
@@ -61,3 +62,38 @@
   (with-setting-access-control
     (setting/set! key value))
   api/generic-204-no-content)
+
+(def ^:private ai-settings-section
+  {:name "AI Configuration"
+   :settings [{:key "openai-api-key"
+               :display-name "OpenAI API Key"
+               :description "API key for OpenAI services"
+               :type "string"
+               :sensitive true}
+              {:key "index-db-user"
+               :display-name "Index DB Username"
+               :description "Username for the Index Database"
+               :type "string"}
+              {:key "index-db-password"
+               :display-name "Index DB Password"
+               :description "Password for the Index Database"
+               :type "string"
+               :sensitive true}
+              {:key "index-db-name"
+               :display-name "Index DB Name"
+               :description "Name of the Index Database"
+               :type "string"}
+              {:key "index-db-host"
+               :display-name "Index DB Host"
+               :description "Host address for the Index Database"
+               :type "string"}
+              {:key "index-db-port"
+               :display-name "Index DB Port"
+               :description "Port number for the Index Database"
+               :type "integer"}]})
+
+(defn- settings-list
+  []
+  (concat
+   (setting/writable-settings)
+   [ai-settings-section]))
