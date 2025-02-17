@@ -4,6 +4,7 @@ import { routerActions } from "react-router-redux";
 import { connectedReduxRedirect } from "redux-auth-wrapper/history3/redirect";
 import { t } from "ttag";
 
+import { getRoutes as getAIRoutes } from "metabase/admin/ai/routes";
 import AdminApp from "metabase/admin/app/components/AdminApp";
 import DatabaseEditApp from "metabase/admin/databases/containers/DatabaseEditApp";
 import DatabaseListApp from "metabase/admin/databases/containers/DatabaseListApp";
@@ -203,6 +204,7 @@ const getRoutes = (store, CanAccessSettings, IsAdmin) => (
       <Fragment>
         {PLUGIN_ADMIN_ROUTES.map(getRoutes => getRoutes(store))}
       </Fragment>
+      {getAIRoutes()}
     </Route>
   </Route>
 );

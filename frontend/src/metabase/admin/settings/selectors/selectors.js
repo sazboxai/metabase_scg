@@ -23,6 +23,7 @@ import {
   trackTrackingPermissionChanged,
 } from "../analytics";
 import { CloudPanel } from "../components/CloudPanel";
+import CreateIndexButton from "../components/CreateIndexButton";
 import { BccToggleWidget } from "../components/Email/BccToggleWidget";
 import { SettingsEmailForm } from "../components/Email/SettingsEmailForm";
 import {
@@ -336,6 +337,13 @@ export const ADMIN_SETTINGS_SECTIONS = {
         required: true,
         placeholder: "pcsk-...",
         sensitive: true,
+      },
+      {
+        key: "create-index",
+        display_name: t`Create Index`,
+        description: t`Create a new index from database tables`,
+        widget: CreateIndexButton,
+        noHeader: true,
       },
     ],
     adminOnly: true,
