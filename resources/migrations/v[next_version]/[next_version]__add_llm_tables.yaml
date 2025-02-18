@@ -1,0 +1,16 @@
+databaseChangeLog:
+  - changeSet:
+      id: add-llm-tables
+      author: scajamarca
+      changes:
+        - createTable:
+            tableName: index_database_llm
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              # ... rest of the columns 

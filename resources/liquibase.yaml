@@ -1,3 +1,10 @@
 databaseChangeLog:
   - include:
       file: "migrations/001_update_migrations.yaml"
+      relativeToChangelogFile: true
+  - include:
+      file: migrations/v55.00/v55.00.01__add_llm_tables.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: migrations/v55.00/v55.00.02__add_llm_prompt_and_document_tables.yaml
+      relativeToChangelogFile: true

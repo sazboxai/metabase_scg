@@ -1,0 +1,87 @@
+databaseChangeLog:
+  - changeSet:
+      id: v55.00.02
+      author: scajamarca
+      onFail: MARK_RAN
+      changes:
+        - createTable:
+            tableName: prompt_file_llm
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: index_database_llm_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_prompt_file_llm_index_id
+                    references: index_database_llm(id)
+                    deleteCascade: true
+              - column:
+                  name: table_reference
+                  type: integer
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_prompt_file_llm_table_id
+                    references: metabase_table(id)
+                    deleteCascade: true
+              - column:
+                  name: status
+                  type: varchar(20)
+                  defaultValue: 'pending'
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: timestamp with time zone
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: timestamp with time zone
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+
+        - createTable:
+            tableName: document_file_llm
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: prompt_file_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_document_file_llm_prompt_id
+                    references: prompt_file_llm(id)
+                    deleteCascade: true
+              - column:
+                  name: status
+                  type: varchar(20)
+                  defaultValue: 'pending'
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: timestamp with time zone
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: timestamp with time zone
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false 

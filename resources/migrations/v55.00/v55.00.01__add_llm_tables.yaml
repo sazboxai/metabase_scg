@@ -1,0 +1,74 @@
+databaseChangeLog:
+  - changeSet:
+      id: v55.00.01
+      author: scajamarca
+      onFail: MARK_RAN
+      changes:
+        - createTable:
+            tableName: index_database_llm
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: database_id
+                  type: integer
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_index_database_llm_database_id
+                    references: metabase_database(id)
+                    deleteCascade: true
+              - column:
+                  name: description
+                  type: text
+              - column:
+                  name: selected_tables
+                  type: jsonb
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status
+                  type: varchar(20)
+                  defaultValue: 'pending'
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: timestamp with time zone
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: timestamp with time zone
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by
+                  type: integer
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_index_database_llm_created_by
+                    references: core_user(id)
+                    deleteCascade: true
+              - column:
+                  name: prompt_file_path
+                  type: text
+              - column:
+                  name: documents_file_path
+                  type: text
+              - column:
+                  name: error_message
+                  type: text
+              - column:
+                  name: pinecone_index_id
+                  type: text
+        - addUniqueConstraint:
+            tableName: index_database_llm
+            columnNames: database_id
+            constraintName: unique_index_database_llm_database_id 

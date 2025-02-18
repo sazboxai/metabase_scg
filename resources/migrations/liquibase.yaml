@@ -1,0 +1,7 @@
+databaseChangeLog:
+  - include:
+      file: v50.00/v50.00.02__add_index_database_llm_table.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: v50.00/v50.00.03__add_llm_prompt_and_document_tables.yaml
+      relativeToChangelogFile: true 

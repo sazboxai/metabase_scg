@@ -15,6 +15,7 @@
    [metabase.api.embed]
    [metabase.api.field]
    [metabase.api.geojson]
+   [metabase.api.llm]
    [metabase.api.macros :as api.macros]
    [metabase.api.native-query-snippet]
    [metabase.api.open-api :as open-api]
@@ -131,6 +132,7 @@
    "/activity"             (+auth 'metabase.activity-feed.api)
    "/alert"                (+auth metabase.pulse.api/alert-routes)
    "/api-key"              (+auth 'metabase.api.api-key)
+   "/llm"                  (+auth 'metabase.api.llm)
    "/automagic-dashboards" (+auth metabase.xrays.api/automagic-dashboards-routes)
    "/bookmark"             (+auth 'metabase.bookmarks.api)
    "/cache"                (+auth 'metabase.api.cache)

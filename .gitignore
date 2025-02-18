@@ -123,3 +123,4 @@ modules/drivers/*/.lsp/*
 
 # LLM documentation
 llm docs/
+dev_config.edn

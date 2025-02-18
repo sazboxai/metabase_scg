@@ -16,6 +16,8 @@ const INITIAL_STATE = {
   description: "",
   tables: [],
   selectedTables: new Set(),
+  isGenerating: false,
+  generatedPrompts: [],
 };
 
 const CreateIndex = () => {
@@ -27,6 +29,9 @@ const CreateIndex = () => {
     INITIAL_STATE.selectedTables,
   );
   const [isLoading, setIsLoading] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(INITIAL_STATE.isGenerating);
+  const [generatedPrompts, setGeneratedPrompts] = useState(INITIAL_STATE.generatedPrompts);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     async function fetchDatabases() {
@@ -88,42 +93,101 @@ const CreateIndex = () => {
   };
 
   const handleConfirm = async () => {
-    const data = {
-      database: selectedDb,
-      description,
-      selectedTables: Array.from(selectedTables),
-    };
-    // TODO: Add API endpoint to save index
-    return data;
+    setIsGenerating(true);
+    setError(null);
+    try {
+      // First create the index
+      if (!selectedDb) {
+        throw new Error('Please select a database first');
+      }
+
+      console.log('Selected DB:', selectedDb, 'type:', typeof selectedDb);
+      
+      // Convert string ID back to number for the API
+      const dbId = parseInt(selectedDb, 10);
+      if (isNaN(dbId)) {
+        throw new Error('Invalid database ID');
+      }
+      console.log('Parsed database ID:', dbId, 'type:', typeof dbId);
+
+      // Ring/Compojure will put the database-id from the URL into :params
+      const requestBody = {
+        description: description || '',
+        selectedTables: Array.from(selectedTables).map(id => Number(id))
+      };
+      
+      console.log('Sending request to:', `/api/llm/${dbId}`);
+      console.log('Request body:', requestBody);
+
+      const createResponse = await fetch(`/api/llm/${dbId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestBody),
+      });
+      
+      if (!createResponse.ok) {
+        const errorText = await createResponse.text();
+        console.error('Server error:', errorText);
+        throw new Error(`Failed to create index: ${errorText}`);
+      }
+      
+      const { id } = await createResponse.json();
+      
+      // Then generate prompts
+      const generateResponse = await fetch(`/api/llm/${id}/generate-prompts`, {
+        method: 'POST',
+      });
+      
+      if (!generateResponse.ok) throw new Error('Failed to generate prompts');
+      
+      // Get generated prompts
+      const promptsResponse = await fetch(`/api/llm/${id}/prompts`);
+      if (!promptsResponse.ok) throw new Error('Failed to fetch prompts');
+      
+      const { prompts } = await promptsResponse.json();
+      setGeneratedPrompts(prompts);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   return (
     <AdminApp>
       <div className="wrapper py4" style={{ padding: "0 2rem" }}>
         <div className="flex align-center mb2" style={{ padding: "0 1rem" }}>
-          <h1 style={{ margin: 0 }}>{t`Select Database`}</h1>
+          <h1 style={{ margin: 0 }}>{t`Generate Database Prompts`}</h1>
           <div className="ml-auto">
             <Button
               primary
-              disabled={selectedTables.size === 0}
+              disabled={selectedTables.size === 0 || isGenerating}
               onClick={handleConfirm}
             >
-              {t`Create Index`}
+              {isGenerating ? t`Generating...` : t`Generate Prompts`}
             </Button>
           </div>
         </div>
 
         <div className="bg-white bordered rounded shadowed">
           <div className="p4" style={{ padding: "2rem 3rem" }}>
-            {isLoading && (
+            {(isLoading || isGenerating) && (
               <div className="flex justify-center align-center py4">
+                <div className="text-centered">
+                  <LoadingSpinner />
+                  <p className="text-medium mt2">
+                    {isGenerating ? t`Generating prompts...` : t`Loading...`}
+                  </p>
+                </div>
                 <LoadingSpinner />
               </div>
             )}
             <div className="mb4">
               <div style={{ maxWidth: "900px" }}>
                 <Select
-                  value={selectedDb}
+                  value={selectedDb ? String(selectedDb) : null}
                   data={databases.map(db => ({
                     label: db.name || String(db.id),
                     value: String(db.id),
