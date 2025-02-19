@@ -388,7 +388,7 @@
     metabase.driver.sql-jdbc.connection                           sql-jdbc.conn
     metabase.driver.sql-jdbc.execute                              sql-jdbc.execute
     metabase.driver.sql-jdbc.execute.diagnostic                   sql-jdbc.execute.diagnostic
-    metabase.driver.sql-jdbc.execute.legacy-impl                  sql-jdbc.legacy
+    metabase.driver.sql-jdbc.execute.legacy-impl                  sql-jdbc.execute.legacy
     metabase.driver.sql-jdbc.execute.old-impl                     sql-jdbc.execute.old
     metabase.driver.sql-jdbc.sync                                 sql-jdbc.sync
     metabase.driver.sql-jdbc.sync.common                          sql-jdbc.sync.common
@@ -885,3 +885,5 @@
   general-qp-and-driver-test-namespaces
   {:linters
    {:metabase/disallow-hardcoded-driver-names-in-tests {:level :warning}}}}}
+
+ :linters {:unresolved-symbol {:exclude [_ instance]}}}

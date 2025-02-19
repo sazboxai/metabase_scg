@@ -1,33 +1,41 @@
 (ns metabase.models.prompt-file-llm
   "Entity definitions and helper functions for PromptFileLlm."
-  (:require [metabase.models.interface :as mi]
-            [metabase.util :as u]
-            [toucan2.core :as t2]
-            [methodical.core :as methodical]
-            [metabase.permissions.util :as perms-util]
-            [metabase.db.connection :as mdb]))
+  (:require
+   [metabase.models.interface :as mi]
+   [metabase.util :as u]
+   [toucan2.core :as t2]
+   [methodical.core :as methodical]
+   [metabase.db.connection :as mdb]
+   [metabase.permissions.util :as perms-util]))
 
-(derive :model/prompt-file-llm ::mi/base-model)
+;; Add this to declare the model type
+(def ^:private model-type :model/prompt-file-llm)
 
-;; Define the model with table name
-(methodical/defmethod t2/table-name :model/prompt-file-llm
-  [_model]
-  :prompt_file_llm)
+;; Use doto for model properties
+(doto model-type
+  (derive :metabase/model)
+  (derive ::mi/read-policy.full-perms-for-perms-set))
 
 ;; Define transforms for automatic type conversion
-(t2/deftransforms :model/prompt-file-llm
-  {:status      {:in name :out keyword}})
+(t2/deftransforms model-type
+  {:status {:in keyword :out name}})
 
 ;; Define permissions
-(defmethod mi/perms-objects-set :model/prompt-file-llm
-  [_model index-database-llm-id]
-  #{(str "/db/" index-database-llm-id "/native/")})
+(defmethod mi/perms-objects-set model-type
+  [prompt]
+  (let [index-id (:index_database_llm_id prompt)
+        database-id (t2/select-one-fn :database_id :model/index-database-llm :id index-id)]
+    #{(str "/db/" database-id "/native/")}))
 
-;; Add after-select hook for any additional processing
-(t2/define-after-select :model/prompt-file-llm
-  [instance]
-  (assoc instance
-         :model :model/prompt-file-llm))
+;; Define the model with table name
+(methodical/defmethod t2/table-name model-type
+  [_]  ;; Just use _ for unused param
+  :prompt_file_llm)
+
+;; Add after-select hook
+(t2/define-after-select model-type
+  [instance]  ;; Use instance consistently
+  (assoc instance :model model-type))
 
 (defn create-prompt-file!
   "Creates a new PromptFileLlm entry."

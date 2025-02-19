@@ -16,7 +16,7 @@ databaseChangeLog:
                     nullable: false
               - column:
                   name: index_database_llm_id
-                  type: uuid
+                  type: integer
                   constraints:
                     nullable: false
                     foreignKeyName: fk_prompt_file_llm_index_id

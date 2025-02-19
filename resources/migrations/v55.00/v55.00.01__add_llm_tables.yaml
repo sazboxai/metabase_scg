@@ -9,43 +9,25 @@ databaseChangeLog:
             columns:
               - column:
                   name: id
-                  type: uuid
-                  defaultValueComputed: gen_random_uuid()
+                  type: serial
                   constraints:
                     primaryKey: true
-                    nullable: false
               - column:
                   name: database_id
                   type: integer
                   constraints:
                     nullable: false
-                    foreignKeyName: fk_index_database_llm_database_id
-                    references: metabase_database(id)
-                    deleteCascade: true
               - column:
                   name: description
                   type: text
               - column:
                   name: selected_tables
-                  type: jsonb
+                  type: json
                   constraints:
                     nullable: false
               - column:
                   name: status
-                  type: varchar(20)
-                  defaultValue: 'pending'
-                  constraints:
-                    nullable: false
-              - column:
-                  name: created_at
-                  type: timestamp with time zone
-                  defaultValueComputed: now()
-                  constraints:
-                    nullable: false
-              - column:
-                  name: updated_at
-                  type: timestamp with time zone
-                  defaultValueComputed: now()
+                  type: varchar(32)
                   constraints:
                     nullable: false
               - column:
@@ -53,9 +35,15 @@ databaseChangeLog:
                   type: integer
                   constraints:
                     nullable: false
-                    foreignKeyName: fk_index_database_llm_created_by
-                    references: core_user(id)
-                    deleteCascade: true
+              - column:
+                  name: created_at
+                  type: timestamp
+                  constraints:
+                    nullable: false
+                    defaultValueComputed: now()
+              - column:
+                  name: updated_at
+                  type: timestamp
               - column:
                   name: prompt_file_path
                   type: text

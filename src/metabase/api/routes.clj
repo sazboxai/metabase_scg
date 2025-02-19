@@ -15,7 +15,7 @@
    [metabase.api.embed]
    [metabase.api.field]
    [metabase.api.geojson]
-   [metabase.api.llm]
+   [metabase.api.llm :as api.llm]
    [metabase.api.macros :as api.macros]
    [metabase.api.native-query-snippet]
    [metabase.api.open-api :as open-api]
@@ -86,7 +86,8 @@
          metabase.segments.api/keep-me
          metabase.setup.api/keep-me
          metabase.tiles.api/keep-me
-         metabase.user-key-value.api/keep-me)
+         metabase.user-key-value.api/keep-me
+         api.llm/routes)
 
 (def ^:private ^{:arglists '([request respond raise])} pass-thru-handler
   "Always 'falls thru' to the next handler."
@@ -132,7 +133,7 @@
    "/activity"             (+auth 'metabase.activity-feed.api)
    "/alert"                (+auth metabase.pulse.api/alert-routes)
    "/api-key"              (+auth 'metabase.api.api-key)
-   "/llm"                  (+auth 'metabase.api.llm)
+   "/llm"                  (+auth #'api.llm/routes)
    "/automagic-dashboards" (+auth metabase.xrays.api/automagic-dashboards-routes)
    "/bookmark"             (+auth 'metabase.bookmarks.api)
    "/cache"                (+auth 'metabase.api.cache)

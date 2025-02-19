@@ -1,35 +1,38 @@
 (ns metabase.models.index-database-llm
   "Entity definitions and helper functions for IndexDatabaseLlm."
-  (:require [metabase.models.interface :as mi]
-            [metabase.util :as u]
-            [toucan2.core :as t2]
-            [methodical.core :as methodical]
-            [metabase.permissions.util :as perms-util]))
+  (:require
+   [metabase.models.interface :as mi]
+   [metabase.util :as u]
+   [toucan2.core :as t2]
+   [methodical.core :as methodical]))
 
-(derive :model/index-database-llm ::mi/base-model)
+;; Add this to declare the model type
+(def ^:private model-type :model/index-database-llm)
+
+;; Derive from read policy
+(derive model-type ::mi/read-policy.full-perms-for-perms-set)
 
 ;; Define the model with table name
-(methodical/defmethod t2/table-name :model/index-database-llm
-  [_model]
+(methodical/defmethod t2/table-name model-type
+  [_]  ;; Just use _ for unused param
   :index_database_llm)
 
 ;; Define transforms for automatic type conversion
-(t2/deftransforms :model/index-database-llm
-  {:status           {:in name :out keyword}
-   :selected_tables  :json})
+(t2/deftransforms model-type
+  {:selected_tables {:in mi/transform-json :out mi/transform-json}
+   :status         {:in keyword :out name}})
 
 ;; Define permissions
-(defmethod mi/perms-objects-set :model/index-database-llm
-  [instance _read-or-write]
-  (let [database-id (:database_id instance)]
-    #{(str "/db/" database-id "/native/")}))
+(defmethod mi/perms-objects-set model-type
+  [{:keys [database_id]}]
+  #{(str "/db/" database_id "/native/")})
 
-;; Add after-select hook for any additional processing
-(t2/define-after-select :model/index-database-llm
-  [instance]
-  (assoc instance
-         :model :model/index-database-llm))
+;; Add after-select hook
+(t2/define-after-select model-type
+  [instance]  ;; Use instance consistently
+  (assoc instance :model model-type))
 
+;; Helper functions
 (defn create-index-database-llm!
   "Creates a new IndexDatabaseLlm entry."
   [{:keys [database-id description selected-tables created-by] :as index-data}]
