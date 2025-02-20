@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { t } from "ttag";
+import { push } from "react-router-redux";
 
 import ErrorBoundary from "metabase/ErrorBoundary";
 import AdminApp from "metabase/admin/app/components/AdminApp";
@@ -7,7 +8,7 @@ import LoadingSpinner from "metabase/components/LoadingSpinner";
 import Button from "metabase/core/components/Button";
 import TextArea from "metabase/core/components/TextArea";
 import { GET } from "metabase/lib/api";
-import { Select } from "metabase/ui";
+import { Select, Progress } from "metabase/ui";
 
 // Constants
 const INITIAL_STATE = {
@@ -18,20 +19,13 @@ const INITIAL_STATE = {
   selectedTables: new Set(),
   isGenerating: false,
   generatedPrompts: [],
+  progress: 0,
+  error: null,
 };
 
 const CreateIndex = () => {
-  const [databases, setDatabases] = useState(INITIAL_STATE.databases);
-  const [selectedDb, setSelectedDb] = useState(INITIAL_STATE.selectedDb);
-  const [description, setDescription] = useState(INITIAL_STATE.description);
-  const [tables, setTables] = useState(INITIAL_STATE.tables);
-  const [selectedTables, setSelectedTables] = useState(
-    INITIAL_STATE.selectedTables,
-  );
+  const [state, setState] = useState(INITIAL_STATE);
   const [isLoading, setIsLoading] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(INITIAL_STATE.isGenerating);
-  const [generatedPrompts, setGeneratedPrompts] = useState(INITIAL_STATE.generatedPrompts);
-  const [error, setError] = useState(null);
 
   useEffect(() => {
     async function fetchDatabases() {
@@ -41,9 +35,9 @@ const CreateIndex = () => {
         const databaseArray = Array.isArray(response)
           ? response
           : response.data || [];
-        setDatabases(databaseArray);
+        setState(prev => ({ ...prev, databases: databaseArray }));
       } catch (error) {
-        setDatabases([]);
+        setState(prev => ({ ...prev, databases: [] }));
       } finally {
         setIsLoading(false);
       }
@@ -53,105 +47,178 @@ const CreateIndex = () => {
 
   useEffect(() => {
     async function fetchTables() {
-      if (selectedDb) {
+      if (state.selectedDb) {
         setIsLoading(true);
         try {
           const response = await GET("/api/table")();
           const filteredTables = response.filter(
-            table => table.db_id === Number(selectedDb),
+            table => table.db_id === Number(state.selectedDb),
           );
-          setTables(filteredTables);
-          setSelectedTables(new Set(filteredTables.map(table => table.id)));
+          setState(prev => ({ ...prev, tables: filteredTables, selectedTables: new Set(filteredTables.map(table => table.id)) }));
         } catch (error) {
-          setTables([]);
-          setSelectedTables(new Set());
+          setState(prev => ({ ...prev, tables: [], selectedTables: new Set() }));
         } finally {
           setIsLoading(false);
         }
       }
     }
     fetchTables();
-  }, [selectedDb]);
+  }, [state.selectedDb]);
 
   const handleTableToggle = tableId => {
-    const newSelected = new Set(selectedTables);
+    const newSelected = new Set(state.selectedTables);
     if (newSelected.has(tableId)) {
       newSelected.delete(tableId);
     } else {
       newSelected.add(tableId);
     }
-    setSelectedTables(newSelected);
+    setState(prev => ({ ...prev, selectedTables: newSelected }));
   };
 
   const handleSelectAll = () => {
-    const allTableIds = tables.map(table => table.id);
-    setSelectedTables(new Set(allTableIds));
+    const allTableIds = state.tables.map(table => table.id);
+    setState(prev => ({ ...prev, selectedTables: new Set(allTableIds) }));
   };
 
   const handleUnselectAll = () => {
-    setSelectedTables(new Set());
+    setState(prev => ({ ...prev, selectedTables: new Set() }));
   };
 
-  const handleConfirm = async () => {
-    setIsGenerating(true);
-    setError(null);
+  const createLLMIndex = async () => {
     try {
-      // First create the index
-      if (!selectedDb) {
-        throw new Error('Please select a database first');
+      // Check if description is empty
+      if (!state.description.trim()) {
+        throw new Error('Description is required');
       }
 
-      console.log('Selected DB:', selectedDb, 'type:', typeof selectedDb);
-      
-      // Convert string ID back to number for the API
-      const dbId = parseInt(selectedDb, 10);
-      if (isNaN(dbId)) {
-        throw new Error('Invalid database ID');
-      }
-      console.log('Parsed database ID:', dbId, 'type:', typeof dbId);
-
-      // Ring/Compojure will put the database-id from the URL into :params
-      const requestBody = {
-        description: description || '',
-        selectedTables: Array.from(selectedTables).map(id => Number(id))
-      };
-      
-      console.log('Sending request to:', `/api/llm/${dbId}`);
-      console.log('Request body:', requestBody);
-
-      const createResponse = await fetch(`/api/llm/${dbId}`, {
+      const response = await fetch('/api/llm', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify(requestBody),
+        body: JSON.stringify({
+          // Match the schema from llm.clj
+          database_id: Number(state.selectedDb),
+          description: state.description.trim(), // Ensure non-blank string
+          selected_tables: Array.from(state.selectedTables).map(Number)
+        }),
       });
-      
-      if (!createResponse.ok) {
-        const errorText = await createResponse.text();
-        console.error('Server error:', errorText);
-        throw new Error(`Failed to create index: ${errorText}`);
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.errors?.description || 'Failed to create LLM index');
       }
+
+      const data = await response.json();
+      return data.data.id;
+    } catch (error) {
+      console.error('Error creating LLM index:', error);
+      setState(prev => ({
+        ...prev,
+        error: error.message
+      }));
+      throw error;
+    }
+  };
+
+  const createPromptForTable = async (indexId, tableId) => {
+    try {
+      // Get database metadata which includes table information
+      const dbMetadata = await GET(`/api/database/${state.selectedDb}/metadata`)();
       
-      const { id } = await createResponse.json();
+      // Find the specific table metadata from the response
+      const tableMetadata = dbMetadata.tables.find(table => table.id === tableId);
       
-      // Then generate prompts
-      const generateResponse = await fetch(`/api/llm/${id}/generate-prompts`, {
+      if (!tableMetadata) {
+        throw new Error(`Table metadata not found for table ${tableId}`);
+      }
+
+      // Format the metadata into a structured prompt
+      const formattedPrompt = formatTableMetadata(tableMetadata);
+
+      const response = await fetch('/api/llm/prompt', {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: tableMetadata.name,
+          description: tableMetadata.description || `Prompt for table ${tableMetadata.name}`,
+          prompt: formattedPrompt,
+          index_database_llm_id: indexId,
+          table_reference: tableId,
+        }),
       });
+
+      if (!response.ok) {
+        throw new Error(`Failed to create prompt for table ${tableId}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error(`Error creating prompt for table ${tableId}:`, error);
+      throw error;
+    }
+  };
+
+  // Helper function to format table metadata into a prompt
+  const formatTableMetadata = (tableMetadata) => {
+    const fields = tableMetadata.fields.map(field => ({
+      name: field.name,
+      type: field.base_type,
+      description: field.description,
+      semantic_type: field.semantic_type,
+    }));
+
+    return JSON.stringify({
+      table_name: tableMetadata.name,
+      table_description: tableMetadata.description,
+      schema: tableMetadata.schema,
+      fields: fields,
+    }, null, 2);
+  };
+
+  const handleGeneratePrompts = async () => {
+    setState(prev => ({ ...prev, isGenerating: true, error: null, progress: 0 }));
+    try {
+      // Step 1: Create the LLM index
+      const indexId = await createLLMIndex();
+
+      // Step 2: Generate prompts for each selected table
+      const selectedTablesArray = Array.from(state.selectedTables);
+      const totalTables = selectedTablesArray.length;
+      const prompts = [];
+
+      for (let i = 0; i < selectedTablesArray.length; i++) {
+        const tableId = selectedTablesArray[i];
+        const prompt = await createPromptForTable(indexId, tableId);
+        prompts.push(prompt);
+        
+        // Update progress
+        setState(prev => ({
+          ...prev,
+          progress: ((i + 1) / totalTables) * 100,
+          generatedPrompts: [...prev.generatedPrompts, prompt],
+        }));
+      }
+
+      // Step 3: Fetch all generated prompts
+      const response = await fetch('/api/llm/prompt');
+      const allPrompts = await response.json();
       
-      if (!generateResponse.ok) throw new Error('Failed to generate prompts');
-      
-      // Get generated prompts
-      const promptsResponse = await fetch(`/api/llm/${id}/prompts`);
-      if (!promptsResponse.ok) throw new Error('Failed to fetch prompts');
-      
-      const { prompts } = await promptsResponse.json();
-      setGeneratedPrompts(prompts);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setIsGenerating(false);
+      setState(prev => ({
+        ...prev,
+        isGenerating: false,
+        generatedPrompts: allPrompts.data,
+        progress: 100,
+      }));
+
+    } catch (error) {
+      setState(prev => ({
+        ...prev,
+        isGenerating: false,
+        error: error.message,
+      }));
     }
   };
 
@@ -163,22 +230,22 @@ const CreateIndex = () => {
           <div className="ml-auto">
             <Button
               primary
-              disabled={selectedTables.size === 0 || isGenerating}
-              onClick={handleConfirm}
+              disabled={state.selectedTables.size === 0 || state.isGenerating}
+              onClick={handleGeneratePrompts}
             >
-              {isGenerating ? t`Generating...` : t`Generate Prompts`}
+              {state.isGenerating ? t`Generating...` : t`Generate Prompts`}
             </Button>
           </div>
         </div>
 
         <div className="bg-white bordered rounded shadowed">
           <div className="p4" style={{ padding: "2rem 3rem" }}>
-            {(isLoading || isGenerating) && (
+            {(isLoading || state.isGenerating) && (
               <div className="flex justify-center align-center py4">
                 <div className="text-centered">
                   <LoadingSpinner />
                   <p className="text-medium mt2">
-                    {isGenerating ? t`Generating prompts...` : t`Loading...`}
+                    {state.isGenerating ? t`Generating prompts...` : t`Loading...`}
                   </p>
                 </div>
                 <LoadingSpinner />
@@ -187,12 +254,12 @@ const CreateIndex = () => {
             <div className="mb4">
               <div style={{ maxWidth: "900px" }}>
                 <Select
-                  value={selectedDb ? String(selectedDb) : null}
-                  data={databases.map(db => ({
+                  value={state.selectedDb ? String(state.selectedDb) : null}
+                  data={state.databases.map(db => ({
                     label: db.name || String(db.id),
                     value: String(db.id),
                   }))}
-                  onChange={setSelectedDb}
+                  onChange={selectedDb => setState(prev => ({ ...prev, selectedDb }))}
                   placeholder={t`Choose a database...`}
                   className="block full rounded-lg border-2"
                   searchable
@@ -205,14 +272,14 @@ const CreateIndex = () => {
               </div>
             </div>
 
-            {selectedDb && (
+            {state.selectedDb && (
               <>
                 <div className="mb4">
                   <h2 className="text-dark mb3">{t`Database Description`}</h2>
                   <div style={{ maxWidth: "900px" }}>
                     <TextArea
-                      value={description}
-                      onChange={e => setDescription(e.target.value)}
+                      value={state.description}
+                      onChange={e => setState(prev => ({ ...prev, description: e.target.value }))}
                       placeholder={t`Enter a description of your database...`}
                       className="block full rounded-lg border-2 p3"
                       rows={6}
@@ -228,7 +295,7 @@ const CreateIndex = () => {
                         small
                         borderless
                         onClick={handleSelectAll}
-                        disabled={selectedTables.size === tables.length}
+                        disabled={state.selectedTables.size === state.tables.length}
                       >
                         {t`Select All`}
                       </Button>
@@ -236,7 +303,7 @@ const CreateIndex = () => {
                         small
                         borderless
                         onClick={handleUnselectAll}
-                        disabled={selectedTables.size === 0}
+                        disabled={state.selectedTables.size === 0}
                       >
                         {t`Unselect All`}
                       </Button>
@@ -263,7 +330,7 @@ const CreateIndex = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {tables.map(table => (
+                      {state.tables.map(table => (
                         <tr
                           key={table.id}
                           className="cursor-pointer"
@@ -274,7 +341,7 @@ const CreateIndex = () => {
                           <td className="text-center">
                             <input
                               type="checkbox"
-                              checked={selectedTables.has(table.id)}
+                              checked={state.selectedTables.has(table.id)}
                               onChange={e => e.stopPropagation()}
                               onClick={e => e.stopPropagation()}
                               className="cursor-pointer"
@@ -287,8 +354,50 @@ const CreateIndex = () => {
                 </div>
               </>
             )}
+
+            {state.isGenerating && (
+              <div className="my4">
+                <h3>{t`Generating Prompts...`}</h3>
+                <Progress value={state.progress} />
+                <p className="text-medium mt2">
+                  {t`Generated ${state.generatedPrompts.length} prompts out of ${state.selectedTables.size} tables`}
+                </p>
+              </div>
+            )}
+
+            {state.error && (
+              <div className="bg-error text-white p2 rounded my2">
+                {state.error}
+              </div>
+            )}
           </div>
         </div>
+
+        {state.generatedPrompts.length > 0 && !state.isGenerating && (
+          <div className="mt4">
+            <h2>{t`Generated Prompts`}</h2>
+            <table className="AdminTable">
+              <thead>
+                <tr>
+                  <th>{t`Table`}</th>
+                  <th>{t`Description`}</th>
+                  <th>{t`Status`}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {state.generatedPrompts.map(prompt => (
+                  <tr key={prompt.id}>
+                    <td>{prompt.name}</td>
+                    <td>{prompt.description}</td>
+                    <td>
+                      <span className="text-success">{t`Generated`}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </AdminApp>
   );
