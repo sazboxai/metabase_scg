@@ -2,54 +2,63 @@
   "Entity definitions and helper functions for PromptFileLlm."
   (:require
    [metabase.models.interface :as mi]
-   [metabase.util :as u]
    [toucan2.core :as t2]
-   [methodical.core :as methodical]
-   [metabase.db.connection :as mdb]
-   [metabase.permissions.util :as perms-util]))
+   [honey.sql :as sql]
+   [honey.sql.helpers :as sqlh]
+   [methodical.core :as methodical]))
 
-;; Add this to declare the model type
-(def ^:private model-type :model/prompt-file-llm)
+(def model-type :model/prompt-file-llm)
 
-;; Use doto for model properties
-(doto model-type
-  (derive :metabase/model)
-  (derive ::mi/read-policy.full-perms-for-perms-set))
+(derive model-type ::mi/read-policy.full-perms-for-perms-set)
 
-;; Define transforms for automatic type conversion
-(t2/deftransforms model-type
-  {:status {:in keyword :out name}})
-
-;; Define permissions
-(defmethod mi/perms-objects-set model-type
-  [prompt]
-  (let [index-id (:index_database_llm_id prompt)
-        database-id (t2/select-one-fn :database_id :model/index-database-llm :id index-id)]
-    #{(str "/db/" database-id "/native/")}))
-
-;; Define the model with table name
 (methodical/defmethod t2/table-name model-type
-  [_]  ;; Just use _ for unused param
+  [_model]
   :prompt_file_llm)
 
-;; Add after-select hook
+(t2/deftransforms model-type
+  {:id                   {:in  identity
+                         :out identity}
+   :index_database_llm_id {:in  identity
+                          :out identity}
+   :table_reference      {:in  identity
+                         :out identity}})
+
 (t2/define-after-select model-type
-  [instance]  ;; Use instance consistently
+  [instance]
   (assoc instance :model model-type))
 
-(defn create-prompt-file!
-  "Creates a new PromptFileLlm entry."
-  [{:keys [index-database-llm-id table-reference] :as prompt-data}]
-  (t2/insert! :model/prompt-file-llm
-              (merge
-               {:status :pending
-                :index_database_llm_id index-database-llm-id
-                :table_reference table-reference}
-               (dissoc prompt-data :index-database-llm-id :table-reference))))
+(doto model-type
+  (derive :metabase/model))
 
-(defn update-prompt-status!
-  "Updates the status of a PromptFileLlm entry."
-  [id new-status]
-  (t2/update! :model/prompt-file-llm id
-              {:status new-status
-               :updated_at (java.time.ZonedDateTime/now)}))
+(defmethod mi/can-read? model-type
+  [_]
+  true)
+
+(defmethod mi/can-write? model-type
+  [_]
+  (mi/superuser?))
+
+(defn get-all-prompts
+  "Get all prompts from the database."
+  []
+  (t2/select model-type))
+
+(defn create-prompt!
+  "Creates a new prompt entry using Honey SQL."
+  [{:keys [prompt index_database_llm_id table_reference]}]
+  (let [query (-> (sqlh/insert-into :prompt_file_llm)
+                  (sqlh/columns :prompt
+                              :index_database_llm_id
+                              :table_reference
+                              :status
+                              :created_at
+                              :updated_at)
+                  (sqlh/values [[prompt
+                               index_database_llm_id
+                               table_reference
+                               "pending"
+                               (sql/call :now)
+                               (sql/call :now)]])
+                  (sqlh/returning :*)
+                  sql/format)]
+    (first (t2/query query))))

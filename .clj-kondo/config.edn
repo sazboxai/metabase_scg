@@ -1,5 +1,5 @@
 ;; -*- comment-column: 100; -*-
-{:config-paths ["macros" "src" "config"]
+{:config-paths ["configs/clj_kondo_config"]
  :linters
  {;;
   ;; enabled optional linters (these are disabled by default)
@@ -886,4 +886,4 @@
   {:linters
    {:metabase/disallow-hardcoded-driver-names-in-tests {:level :warning}}}}}
 
- :linters {:unresolved-symbol {:exclude [_ instance]}}}
+ :linters {:unresolved-symbol {:exclude [_ row instance _model]}}}
