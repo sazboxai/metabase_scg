@@ -177,7 +177,7 @@ const CreateIndex = () => {
       }
 
       // Format the metadata into a structured prompt
-      const formattedPrompt = formatTableMetadata(tableMetadata);
+      const formattedPrompt = await formatTableMetadata(tableMetadata);
 
       const response = await fetch('/api/llm/prompt', {
         method: 'POST',
@@ -204,8 +204,27 @@ const CreateIndex = () => {
     }
   };
 
-  // Helper function to format table metadata into a prompt
-  const formatTableMetadata = (tableMetadata) => {
+  // Helper function to get referenced table name
+  const getReferencedTableName = async (field) => {
+    // Get the table ID from the target
+    const targetTableId = field.target?.table_id;
+    
+    if (!targetTableId) {
+      return 'Unknown';
+    }
+
+    try {
+      // Fetch the table information using the table ID
+      const tableInfo = await GET(`/api/table/${targetTableId}`)();
+      return tableInfo.name || 'Unknown';
+    } catch (error) {
+      console.error(`Error fetching table name for field ${field.name}:`, error);
+      return 'Unknown';
+    }
+  };
+
+  // Modified formatTableMetadata to handle async operations
+  const formatTableMetadata = async (tableMetadata) => {
     // Generate schema details table
     const schemaTable = [
       '| Column Name | Data Type | Description |',
@@ -215,19 +234,41 @@ const CreateIndex = () => {
       )
     ].join('\n');
 
-    // Generate relationships section based on semantic types
-    const relationships = tableMetadata.fields
-      .filter(field => field.semantic_type?.includes('FK'))
-      .map(field => `- **\`${field.name}\`** → References **${field.target?.table?.display_name || 'Unknown'}** table`)
-      .join('\n');
+    // Get foreign key fields and their relationships
+    const foreignKeyFields = tableMetadata.fields.filter(field => 
+      field.semantic_type?.includes('FK')
+    );
 
-    // Create example query based on table structure
+    // Fetch table names for all foreign keys
+    const relationships = await Promise.all(
+      foreignKeyFields.map(async field => {
+        const referencedTableName = await getReferencedTableName(field);
+        return `- **\`${field.name}\`** → References **${referencedTableName}** table`;
+      })
+    );
+
+    // Create example query using first 3 fields
     const exampleQuery = `SELECT ${tableMetadata.fields.slice(0, 3).map(f => f.name).join(', ')}
 FROM ${tableMetadata.name}
 LIMIT 5;`;
 
-    // Format the complete markdown document
-    const markdown = `# Table: ${tableMetadata.name}
+    // Add the introduction and instructions
+    const markdown = `You are a technical documentation assistant. Your task is to generate a structured Markdown file that describes a database table using the given metadata. The goal is to help an LLM understand the database schema and generate SQL queries effectively.
+
+## Input: Table Metadata (JSON Format)
+The metadata for table "${tableMetadata.name}" has been processed into this documentation.
+
+## Output: Well-structured Markdown file with structured information about the table.
+
+## Rules:
+1. Use proper Markdown formatting (headers, tables, and code blocks).
+2. Write clear, human-friendly descriptions.
+3. If relationships exist (e.g., foreign keys), include them in the "Relationships" section.
+4. Create a useful example SQL query.
+
+---
+
+# Table: ${tableMetadata.name}
 
 ## Description
 ${tableMetadata.description || `The \`${tableMetadata.name}\` table in the ${tableMetadata.schema || 'default'} schema.`}
@@ -235,7 +276,7 @@ ${tableMetadata.description || `The \`${tableMetadata.name}\` table in the ${tab
 ## Schema Details
 ${schemaTable}
 
-${relationships ? `## Relationships\n${relationships}\n` : ''}
+${relationships.length > 0 ? `## Relationships\n${relationships.join('\n')}\n` : ''}
 
 ## Example Query
 \`\`\`sql
