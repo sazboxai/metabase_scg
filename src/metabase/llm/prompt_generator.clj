@@ -122,7 +122,7 @@ If additional details are required to refine the query, ask clarifying questions
           ;; Use query instead of query-vectors! to match Pinecone's API
           context (pinecone/query index-name
                                 embeddings
-                                {:top-k 8
+                                {:top-k 3
                                  :include-values false
                                  :include-metadata true})
           ;; Format prompt with context and question

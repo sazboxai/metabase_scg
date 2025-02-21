@@ -11,7 +11,8 @@
    [metabase.util.i18n :refer [tru]]
    [metabase.util.log :as log]
    [toucan2.core :as t2]
-   [metabase.llm.prompt-generator :as prompt-gen]))
+   [metabase.llm.prompt-generator :as prompt-gen]
+   [metabase.llm.documentation-generator :as doc-gen]))
 
 (log/info "Loading LLM API namespace")
 
@@ -198,6 +199,21 @@
       (log/error e "Error generating query")
       {:success false
        :error (tru "Error generating query")
+       :details (.getMessage e)})))
+
+(api.macros/defendpoint :post "/generate-documentation"
+  "Generate comprehensive documentation for a database"
+  [_route-params
+   _query-params
+   {:keys [database_id]}]
+  {database_id ms/PositiveInt}
+  (try
+    (api/check-superuser)
+    (doc-gen/generate-documentation! database_id)
+    (catch Exception e
+      (log/error e "Error generating documentation")
+      {:success false
+       :error (tru "Error generating documentation")
        :details (.getMessage e)})))
 
 ;; Export routes using ns-handler

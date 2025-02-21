@@ -44,7 +44,6 @@ import {
   getEditorLineHeight,
   getMaxAutoSizeLines,
 } from "./utils";
-import { generateAIQuery } from "../../actions/ai-query";
 
 type OwnProps = typeof NativeQueryEditor.defaultProps & {
   question: Question;
@@ -152,7 +151,6 @@ export class NativeQueryEditor extends Component<
       variables: true,
       snippets: true,
       promptInput: true,
-      aiQuery: true,
     },
   };
 
@@ -323,24 +321,25 @@ export class NativeQueryEditor extends Component<
     this.focus();
   };
 
-  handleGenerateAIQuery = async () => {
+  handleGenerateQuery = async () => {
     const { question } = this.props;
-    if (!question) {
+    const databaseId = question.databaseId();
+    const query = question.query();
+    const currentText = Lib.rawNativeQuery(query);
+
+    if (!databaseId || !currentText) {
       return;
     }
 
     try {
-      const query = question.query();
-      const nativeQuery = Lib.rawNativeQuery(query);
-
       const response = await fetch("/api/llm/generate-query", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          question: nativeQuery,
-          database_id: question.databaseId()
+          question: currentText,
+          database_id: databaseId,
         }),
       });
 
@@ -348,8 +347,11 @@ export class NativeQueryEditor extends Component<
         throw new Error("Failed to generate query");
       }
 
-      const { query: generatedQuery } = await response.json();
-      this.onChange(generatedQuery);
+      const result = await response.json();
+
+      if (result.success && result.query) {
+        this.onChange(result.query);
+      }
     } catch (error) {
       console.error("Error generating query:", error);
     }
@@ -461,10 +463,13 @@ export class NativeQueryEditor extends Component<
             {hasEditingSidebar && !readOnly && (
               <NativeQueryEditorSidebar
                 runQuery={this.runQuery}
-                features={sidebarFeatures}
+                features={{
+                  ...sidebarFeatures,
+                  aiQueryGeneration: true,
+                }}
                 onShowPromptInput={this.togglePromptVisibility}
                 onFormatQuery={this.formatQuery}
-                onGenerateAIQuery={this.handleGenerateAIQuery}
+                onGenerateQuery={this.handleGenerateQuery}
                 {...this.props}
               />
             )}
