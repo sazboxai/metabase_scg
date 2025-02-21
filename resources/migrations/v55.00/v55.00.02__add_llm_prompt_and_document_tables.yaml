@@ -41,6 +41,11 @@ databaseChangeLog:
                   constraints:
                     nullable: false
               - column:
+                  name: generated_text
+                  type: TEXT
+                  constraints:
+                    nullable: true
+              - column:
                   name: created_at
                   type: TIMESTAMP
                   defaultValueComputed: CURRENT_TIMESTAMP

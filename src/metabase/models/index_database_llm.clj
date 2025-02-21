@@ -17,7 +17,7 @@
 
 ;; Define the model with table name
 (methodical/defmethod t2/table-name model-type
-  [_model]  ;; Use meaningful param name to fix linter
+  [model]  ;; Remove underscore since clj-kondo expects declared params
   :index_database_llm)
 
 ;; Define transforms for automatic type conversion
@@ -32,13 +32,13 @@
 
 ;; Add after-select hook
 (t2/define-after-select model-type
-  [row]  ;; Use meaningful param name to fix linter
+  [{:keys [model] :as row}]  ;; Use proper destructuring to make linter happy
   (assoc row :model model-type))
 
 ;; Helper functions
 (defn create-index-database-llm!
   "Creates a new IndexDatabaseLlm entry."
-  [{:keys [database-id description selected-tables created-by]}]
+  [{:keys [database-id description selected-tables created-by pinecone-index-id]}]
   (let [json-tables (json/generate-string selected-tables)
         query (-> (sqlh/insert-into :index_database_llm)
                   (sqlh/columns :database_id 
@@ -47,14 +47,16 @@
                               :created_by 
                               :status
                               :created_at
-                              :updated_at)
+                              :updated_at
+                              :pinecone_index_id)  ;; Add new column
                   (sqlh/values [[database-id 
                                description 
                                (sql/call :cast json-tables :json)
                                created-by 
                                "pending"
-                               (sql/call :now)  ;; Add current timestamp
-                               (sql/call :now)]])  ;; Add current timestamp
+                               (sql/call :now)
+                               (sql/call :now)
+                               pinecone-index-id]])  ;; Add new value
                   (sqlh/returning :*)
                   sql/format)]
     (first (t2/query query))))

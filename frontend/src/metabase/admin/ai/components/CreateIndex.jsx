@@ -84,9 +84,8 @@ const CreateIndex = () => {
     setState(prev => ({ ...prev, selectedTables: new Set() }));
   };
 
-  const createLLMIndex = async () => {
+  const createLLMIndex = async (pineconeIndexId) => {
     try {
-      // Check if description is empty
       if (!state.description.trim()) {
         throw new Error('Description is required');
       }
@@ -97,10 +96,10 @@ const CreateIndex = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          // Match the schema from llm.clj
           database_id: Number(state.selectedDb),
-          description: state.description.trim(), // Ensure non-blank string
-          selected_tables: Array.from(state.selectedTables).map(Number)
+          description: state.description.trim(),
+          selected_tables: Array.from(state.selectedTables).map(Number),
+          pinecone_index_id: pineconeIndexId
         }),
       });
 
@@ -118,6 +117,50 @@ const CreateIndex = () => {
         error: error.message
       }));
       throw error;
+    }
+  };
+
+  const createPineconeIndex = async () => {
+    try {
+      const response = await fetch('/api/llm/pinecone/index', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          database_id: Number(state.selectedDb)
+        })
+      });
+
+      const data = await response.json();
+
+      // If we get a 409 (Already Exists), that's fine - we can use the existing index
+      if (response.status === 409) {
+        return `metabase-index-${state.selectedDb}`; // Return the expected index name
+      }
+
+      if (!response.ok && response.status !== 409) {
+        throw new Error(data.message || 'Failed to create Pinecone index');
+      }
+
+      return data.data.index_name;
+    } catch (error) {
+      console.error('Error creating/getting Pinecone index:', error);
+      throw new Error(`Failed to create/get Pinecone index: ${error.message}`);
+    }
+  };
+
+  const checkPineconeIndexStatus = async (indexName) => {
+    try {
+      const response = await fetch(`/api/llm/pinecone/index/${indexName}/status`);
+      if (!response.ok) {
+        throw new Error('Failed to check index status');
+      }
+      const data = await response.json();
+      return data.ready;
+    } catch (error) {
+      console.error('Error checking Pinecone index status:', error);
+      return false;
     }
   };
 
@@ -163,28 +206,64 @@ const CreateIndex = () => {
 
   // Helper function to format table metadata into a prompt
   const formatTableMetadata = (tableMetadata) => {
-    const fields = tableMetadata.fields.map(field => ({
-      name: field.name,
-      type: field.base_type,
-      description: field.description,
-      semantic_type: field.semantic_type,
-    }));
+    // Generate schema details table
+    const schemaTable = [
+      '| Column Name | Data Type | Description |',
+      '|------------|-----------|-------------|',
+      ...tableMetadata.fields.map(field => 
+        `| ${field.name} | ${field.base_type} | ${field.description || 'No description available'} |`
+      )
+    ].join('\n');
 
-    return JSON.stringify({
-      table_name: tableMetadata.name,
-      table_description: tableMetadata.description,
-      schema: tableMetadata.schema,
-      fields: fields,
-    }, null, 2);
+    // Generate relationships section based on semantic types
+    const relationships = tableMetadata.fields
+      .filter(field => field.semantic_type?.includes('FK'))
+      .map(field => `- **\`${field.name}\`** → References **${field.target?.table?.display_name || 'Unknown'}** table`)
+      .join('\n');
+
+    // Create example query based on table structure
+    const exampleQuery = `SELECT ${tableMetadata.fields.slice(0, 3).map(f => f.name).join(', ')}
+FROM ${tableMetadata.name}
+LIMIT 5;`;
+
+    // Format the complete markdown document
+    const markdown = `# Table: ${tableMetadata.name}
+
+## Description
+${tableMetadata.description || `The \`${tableMetadata.name}\` table in the ${tableMetadata.schema || 'default'} schema.`}
+
+## Schema Details
+${schemaTable}
+
+${relationships ? `## Relationships\n${relationships}\n` : ''}
+
+## Example Query
+\`\`\`sql
+${exampleQuery}
+\`\`\``;
+
+    return markdown;
   };
 
   const handleGeneratePrompts = async () => {
-    setState(prev => ({ ...prev, isGenerating: true, error: null, progress: 0 }));
-    try {
-      // Step 1: Create the LLM index
-      const indexId = await createLLMIndex();
+    setState(prev => ({ 
+      ...prev, 
+      isGenerating: true, 
+      error: null, 
+      progress: 0,
+      status: 'Preparing Pinecone index...' 
+    }));
 
-      // Step 2: Generate prompts for each selected table
+    try {
+      // Step 1: Get or Create Pinecone Index
+      const pineconeIndexId = await createPineconeIndex();
+
+      // Step 2: Create the LLM index with Pinecone index ID
+      setState(prev => ({ ...prev, status: 'Creating LLM index...' }));
+      const indexId = await createLLMIndex(pineconeIndexId);
+
+      // Step 3: Generate prompts for each selected table
+      setState(prev => ({ ...prev, status: 'Generating prompts...' }));
       const selectedTablesArray = Array.from(state.selectedTables);
       const totalTables = selectedTablesArray.length;
       const prompts = [];
@@ -194,7 +273,6 @@ const CreateIndex = () => {
         const prompt = await createPromptForTable(indexId, tableId);
         prompts.push(prompt);
         
-        // Update progress
         setState(prev => ({
           ...prev,
           progress: ((i + 1) / totalTables) * 100,
@@ -202,7 +280,7 @@ const CreateIndex = () => {
         }));
       }
 
-      // Step 3: Fetch all generated prompts
+      // Step 4: Fetch all generated prompts
       const response = await fetch('/api/llm/prompt');
       const allPrompts = await response.json();
       
@@ -211,6 +289,7 @@ const CreateIndex = () => {
         isGenerating: false,
         generatedPrompts: allPrompts.data,
         progress: 100,
+        status: 'Complete'
       }));
 
     } catch (error) {
@@ -218,8 +297,27 @@ const CreateIndex = () => {
         ...prev,
         isGenerating: false,
         error: error.message,
+        status: 'Failed'
       }));
     }
+  };
+
+  // Add a helper function to get prompt status
+  const getPromptStatus = (tableId) => {
+    if (!state.selectedTables.has(tableId)) {
+      return { status: 'Not Selected', className: 'text-medium' };
+    }
+    
+    const prompt = state.generatedPrompts.find(p => p.table_reference === tableId);
+    if (prompt) {
+      return { status: 'Generated', className: 'text-success' };
+    }
+    
+    if (state.error) {
+      return { status: 'Failed', className: 'text-error' };
+    }
+    
+    return { status: 'Pending', className: 'text-medium' };
   };
 
   return (
@@ -321,34 +419,42 @@ const CreateIndex = () => {
                       <col style={{ width: "80px" }} />
                       <col style={{ width: "auto" }} />
                       <col style={{ width: "120px" }} />
+                      <col style={{ width: "150px" }} />
                     </colgroup>
                     <thead>
                       <tr>
                         <th></th>
                         <th className="text-wrap text-left">{t`Name`}</th>
                         <th className="text-center">{t`Select`}</th>
+                        <th className="text-center">{t`Prompt Status`}</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {state.tables.map(table => (
-                        <tr
-                          key={table.id}
-                          className="cursor-pointer"
-                          onClick={() => handleTableToggle(table.id)}
-                        >
-                          <td></td>
-                          <td className="text-wrap text-left">{table.name}</td>
-                          <td className="text-center">
-                            <input
-                              type="checkbox"
-                              checked={state.selectedTables.has(table.id)}
-                              onChange={e => e.stopPropagation()}
-                              onClick={e => e.stopPropagation()}
-                              className="cursor-pointer"
-                            />
-                          </td>
-                        </tr>
-                      ))}
+                      {state.tables.map(table => {
+                        const { status, className } = getPromptStatus(table.id);
+                        return (
+                          <tr
+                            key={table.id}
+                            className="cursor-pointer"
+                            onClick={() => handleTableToggle(table.id)}
+                          >
+                            <td></td>
+                            <td className="text-wrap text-left">{table.name}</td>
+                            <td className="text-center">
+                              <input
+                                type="checkbox"
+                                checked={state.selectedTables.has(table.id)}
+                                onChange={e => e.stopPropagation()}
+                                onClick={e => e.stopPropagation()}
+                                className="cursor-pointer"
+                              />
+                            </td>
+                            <td className={`text-center ${className}`}>
+                              {status}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -372,32 +478,6 @@ const CreateIndex = () => {
             )}
           </div>
         </div>
-
-        {state.generatedPrompts.length > 0 && !state.isGenerating && (
-          <div className="mt4">
-            <h2>{t`Generated Prompts`}</h2>
-            <table className="AdminTable">
-              <thead>
-                <tr>
-                  <th>{t`Table`}</th>
-                  <th>{t`Description`}</th>
-                  <th>{t`Status`}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {state.generatedPrompts.map(prompt => (
-                  <tr key={prompt.id}>
-                    <td>{prompt.name}</td>
-                    <td>{prompt.description}</td>
-                    <td>
-                      <span className="text-success">{t`Generated`}</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
       </div>
     </AdminApp>
   );
