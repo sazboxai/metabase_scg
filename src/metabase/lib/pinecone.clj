@@ -111,4 +111,38 @@
                         :body (json/parse-string (:body response) true)}))))
     (catch Exception e
       (log/error e (tru "Error upserting vector"))
-      (throw (ex-info (tru "Error upserting vector") {:cause (.getMessage e)}))))) 
+      (throw (ex-info (tru "Error upserting vector") {:cause (.getMessage e)})))))
+
+(defn query
+  "Query vectors in Pinecone index
+   index-name: name of the index
+   vector: the query vector
+   opts: options map with:
+     :top-k - number of results (default 10)
+     :include-values - include vector values (default false)
+     :include-metadata - include metadata (default true)"
+  [index-name vector {:keys [top-k include-values include-metadata]
+                     :or {top-k 10
+                         include-values false
+                         include-metadata true}}]
+  (try
+    (log/info "Querying vectors in index:" index-name)
+    (ensure-index-exists! index-name)
+    (let [host (get-pinecone-api-url index-name)
+          response (client/post (str "https://" host "/query")
+                              {:headers (get-pinecone-headers)
+                               :body (json/generate-string
+                                     {:vector vector
+                                      :top_k top-k
+                                      :include_values include-values
+                                      :include_metadata include-metadata})
+                               :throw-exceptions false})]
+      (if (= 200 (:status response))
+        (-> response :body json/parse-string)
+        (throw (ex-info (tru "Failed to query vectors")
+                       {:status (:status response)
+                        :body (json/parse-string (:body response) true)}))))
+    (catch Exception e
+      (log/error e (tru "Error querying vectors"))
+      (throw (ex-info (tru "Error querying vectors") 
+                     {:cause (.getMessage e)}))))) 

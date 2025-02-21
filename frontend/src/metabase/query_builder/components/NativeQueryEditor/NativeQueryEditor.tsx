@@ -44,6 +44,7 @@ import {
   getEditorLineHeight,
   getMaxAutoSizeLines,
 } from "./utils";
+import { generateAIQuery } from "../../actions/ai-query";
 
 type OwnProps = typeof NativeQueryEditor.defaultProps & {
   question: Question;
@@ -151,6 +152,7 @@ export class NativeQueryEditor extends Component<
       variables: true,
       snippets: true,
       promptInput: true,
+      aiQuery: true,
     },
   };
 
@@ -321,6 +323,38 @@ export class NativeQueryEditor extends Component<
     this.focus();
   };
 
+  handleGenerateAIQuery = async () => {
+    const { question } = this.props;
+    if (!question) {
+      return;
+    }
+
+    try {
+      const query = question.query();
+      const nativeQuery = Lib.rawNativeQuery(query);
+
+      const response = await fetch("/api/llm/generate-query", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          question: nativeQuery,
+          database_id: question.databaseId()
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to generate query");
+      }
+
+      const { query: generatedQuery } = await response.json();
+      this.onChange(generatedQuery);
+    } catch (error) {
+      console.error("Error generating query:", error);
+    }
+  };
+
   render() {
     const {
       question,
@@ -430,6 +464,7 @@ export class NativeQueryEditor extends Component<
                 features={sidebarFeatures}
                 onShowPromptInput={this.togglePromptVisibility}
                 onFormatQuery={this.formatQuery}
+                onGenerateAIQuery={this.handleGenerateAIQuery}
                 {...this.props}
               />
             )}

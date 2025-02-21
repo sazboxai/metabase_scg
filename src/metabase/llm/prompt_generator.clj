@@ -6,7 +6,11 @@
             [metabase.models.field-values :as field-values]
             [metabase.util :as u]
             [metabase.util.date-2 :as u.date]
-            [toucan2.core :as t2]))
+            [toucan2.core :as t2]
+            [metabase.lib.openai :as openai]
+            [metabase.lib.pinecone :as pinecone]
+            [metabase.util.i18n :refer [tru]]
+            [metabase.util.log :as log]))
 
 (def ^:private prompt-template
   "# Table: %s
@@ -25,6 +29,20 @@
 
 ## Example Query
 %s")
+
+(def ^:private sql-expert-prompt
+  "You are an expert in SQL and PostgreSQL database management. Based on the provided context, generate an optimized and syntactically correct PostgreSQL query. Ensure the query follows best practices, including indexing considerations, performance optimization, and security measures (such as avoiding SQL injection vulnerabilities). If necessary, include joins, aggregations, filtering conditions, and ordering to achieve the desired outcome.
+
+### Expected Output:
+- A PostgreSQL query without any explanation—just pure SQL.
+- If you need to include explanations, provide them as inline SQL comments using `--`.
+
+Use the provided database structure for reference to answer the following user question:
+%s
+
+Answer with plain text dont add the ```sql or ``` at the beginning or end of your response.
+
+If additional details are required to refine the query, ask clarifying questions in commented form using `--`.")
 
 (defn- get-field-metadata
   "Get metadata for a field including name, type, and description."
@@ -95,3 +113,26 @@
         file-path (.getAbsolutePath temp-file)]
     (spit temp-file prompt-content)
     {:file-path file-path}))
+
+(defn generate-query!
+  "Generate a SQL query based on a natural language question and database context"
+  [question index-name]
+  (try
+    (let [embeddings (openai/create-embeddings question)
+          ;; Use query instead of query-vectors! to match Pinecone's API
+          context (pinecone/query index-name
+                                embeddings
+                                {:top-k 8
+                                 :include-values false
+                                 :include-metadata true})
+          ;; Format prompt with context and question
+          prompt (format sql-expert-prompt question)
+          ;; Generate SQL query
+          generated-query (openai/generate-text prompt)]
+      {:success true
+       :query generated-query})
+    (catch Exception e
+      (log/error e "Error generating query")
+      {:success false
+       :error (tru "Error generating query")
+       :details (.getMessage e)})))

@@ -15,6 +15,7 @@ import type Question from "metabase-lib/v1/Question";
 import type { Collection, NativeQuerySnippet } from "metabase-types/api";
 
 import RunButtonWithTooltip from "../../RunButtonWithTooltip";
+import AIQueryButton from "../../AIQueryButton";
 
 import NativeQueryEditorSidebarS from "./NativeQueryEditorSidebar.module.css";
 
@@ -25,6 +26,7 @@ export type Features = {
   variables?: boolean;
   snippets?: boolean;
   promptInput?: boolean;
+  aiQuery?: boolean;
 };
 
 interface NativeQueryEditorSidebarProps {
@@ -48,6 +50,7 @@ interface NativeQueryEditorSidebarProps {
   toggleTemplateTagsEditor: () => void;
   toggleSnippetSidebar: () => void;
   onFormatQuery: () => void;
+  onGenerateAIQuery: () => void;
 }
 
 export const NativeQueryEditorSidebar = (
@@ -65,6 +68,7 @@ export const NativeQueryEditorSidebar = (
     snippets,
     features,
     onFormatQuery,
+    onGenerateAIQuery,
   } = props;
 
   // hide the snippet sidebar if there aren't any visible snippets/collections
@@ -96,6 +100,14 @@ export const NativeQueryEditorSidebar = (
       className={NativeQueryEditorSidebarS.Container}
       data-testid="native-query-editor-sidebar"
     >
+      {features.aiQuery && (
+        <Tooltip tooltip={t`Generate SQL with AI`}>
+          <AIQueryButton 
+            onGenerateQuery={onGenerateAIQuery}
+            className={NativeQueryEditorSidebarS.SidebarButton}
+          />
+        </Tooltip>
+      )}
       {canFormatQuery && (
         <Tooltip tooltip={t`Format query`}>
           <Button

@@ -10,7 +10,8 @@
    [metabase.util.malli.schema :as ms]
    [metabase.util.i18n :refer [tru]]
    [metabase.util.log :as log]
-   [toucan2.core :as t2]))
+   [toucan2.core :as t2]
+   [metabase.llm.prompt-generator :as prompt-gen]))
 
 (log/info "Loading LLM API namespace")
 
@@ -172,6 +173,31 @@
       (log/error e "Error processing prompt")
       {:success false
        :error (tru "Error processing prompt")
+       :details (.getMessage e)})))
+
+(api.macros/defendpoint :post "/generate-query"
+  "Generate a SQL query from natural language"
+  [_route-params
+   _query-params
+   {:keys [question database_id]}]
+  {question    ms/NonBlankString
+   database_id ms/PositiveInt}
+  (try
+    (api/check-superuser)
+    (let [index-record (t2/select-one [:model/index-database-llm :*]
+                                     :database_id database_id)
+          result (when index-record
+                  (prompt-gen/generate-query! 
+                   question 
+                   (:pinecone_index_id index-record)))]
+      (if result
+        result
+        {:success false
+         :error (tru "No index found for database")}))
+    (catch Exception e
+      (log/error e "Error generating query")
+      {:success false
+       :error (tru "Error generating query")
        :details (.getMessage e)})))
 
 ;; Export routes using ns-handler
