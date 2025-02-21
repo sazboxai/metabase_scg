@@ -21,6 +21,9 @@ const INITIAL_STATE = {
   generatedPrompts: [],
   progress: 0,
   error: null,
+  isProcessing: false,
+  processedPrompts: [],
+  processProgress: 0,
 };
 
 const CreateIndex = () => {
@@ -361,6 +364,76 @@ ${exampleQuery}
     return { status: 'Pending', className: 'text-medium' };
   };
 
+  // Add helper function to get processing status
+  const getPromptProcessingStatus = (tableId) => {
+    const prompt = state.generatedPrompts.find(p => p.table_reference === tableId);
+    if (!prompt) return { status: '', className: '' };
+
+    switch (prompt.status) {
+      case 'completed':
+        return { status: 'Completed', className: 'text-success' };
+      case 'failed':
+        return { status: 'Failed', className: 'text-error' };
+      case 'pending':
+      default:
+        return { status: 'Pending', className: 'text-medium' };
+    }
+  };
+
+  // Add function to process prompts
+  const processPrompts = async () => {
+    setState(prev => ({ ...prev, isProcessing: true, processProgress: 0 }));
+    const prompts = state.generatedPrompts;
+    const total = prompts.length;
+    let processed = 0;
+
+    try {
+      for (const prompt of prompts) {
+        try {
+          const response = await fetch(`/api/llm/prompt/${prompt.id}/process`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+          });
+
+          if (!response.ok) {
+            throw new Error(`Failed to process prompt ${prompt.id}`);
+          }
+
+          const result = await response.json();
+          
+          // Update the prompt status in our state
+          setState(prev => ({
+            ...prev,
+            generatedPrompts: prev.generatedPrompts.map(p => 
+              p.id === prompt.id 
+                ? { ...p, status: result.success ? 'completed' : 'failed' }
+                : p
+            ),
+            processProgress: ((processed + 1) / total) * 100,
+            processedPrompts: [...prev.processedPrompts, prompt.id]
+          }));
+
+          processed++;
+
+        } catch (error) {
+          console.error(`Error processing prompt ${prompt.id}:`, error);
+          
+          // Update status to failed on error
+          setState(prev => ({
+            ...prev,
+            generatedPrompts: prev.generatedPrompts.map(p => 
+              p.id === prompt.id 
+                ? { ...p, status: 'failed' }
+                : p
+            )
+          }));
+        }
+      }
+    } finally {
+      setState(prev => ({ ...prev, isProcessing: false }));
+    }
+  };
+
   return (
     <AdminApp>
       <div className="wrapper py4" style={{ padding: "0 2rem" }}>
@@ -461,6 +534,7 @@ ${exampleQuery}
                       <col style={{ width: "auto" }} />
                       <col style={{ width: "120px" }} />
                       <col style={{ width: "150px" }} />
+                      <col style={{ width: "150px" }} />
                     </colgroup>
                     <thead>
                       <tr>
@@ -468,11 +542,13 @@ ${exampleQuery}
                         <th className="text-wrap text-left">{t`Name`}</th>
                         <th className="text-center">{t`Select`}</th>
                         <th className="text-center">{t`Prompt Status`}</th>
+                        <th className="text-center">{t`Processing Status`}</th>
                       </tr>
                     </thead>
                     <tbody>
                       {state.tables.map(table => {
-                        const { status, className } = getPromptStatus(table.id);
+                        const promptStatus = getPromptStatus(table.id);
+                        const processingStatus = getPromptProcessingStatus(table.id);
                         return (
                           <tr
                             key={table.id}
@@ -490,8 +566,11 @@ ${exampleQuery}
                                 className="cursor-pointer"
                               />
                             </td>
-                            <td className={`text-center ${className}`}>
-                              {status}
+                            <td className={`text-center ${promptStatus.className}`}>
+                              {promptStatus.status}
+                            </td>
+                            <td className={`text-center ${processingStatus.className}`}>
+                              {processingStatus.status}
                             </td>
                           </tr>
                         );
@@ -515,6 +594,28 @@ ${exampleQuery}
             {state.error && (
               <div className="bg-error text-white p2 rounded my2">
                 {state.error}
+              </div>
+            )}
+
+            {/* Add Process Prompts button */}
+            {state.generatedPrompts.length > 0 && !state.isGenerating && !state.isProcessing && (
+              <Button
+                primary
+                onClick={processPrompts}
+                className="ml2"
+              >
+                {t`Process Prompts`}
+              </Button>
+            )}
+
+            {/* Add processing progress bar */}
+            {state.isProcessing && (
+              <div className="my4">
+                <h3>{t`Processing Prompts...`}</h3>
+                <Progress value={state.processProgress} />
+                <p className="text-medium mt2">
+                  {t`Processed ${state.processedPrompts.length} prompts out of ${state.generatedPrompts.length}`}
+                </p>
               </div>
             )}
           </div>
