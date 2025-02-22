@@ -1,5 +1,5 @@
 (ns metabase.models.ai-settings
-  (:require [metabase.models.setting :refer [defsetting]]
+  (:require [metabase.models.setting :as setting :refer [defsetting]]
             [metabase.util.i18n :refer [deferred-tru]]))
 
 ;; AI Configuration Settings

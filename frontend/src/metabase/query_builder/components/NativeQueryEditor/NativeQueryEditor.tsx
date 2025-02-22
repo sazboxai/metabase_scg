@@ -321,6 +321,42 @@ export class NativeQueryEditor extends Component<
     this.focus();
   };
 
+  handleGenerateQuery = async () => {
+    const { question } = this.props;
+    const databaseId = question.databaseId();
+    const query = question.query();
+    const currentText = Lib.rawNativeQuery(query);
+
+    if (!databaseId || !currentText) {
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/llm/generate-query", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          question: currentText,
+          database_id: databaseId,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to generate query");
+      }
+
+      const result = await response.json();
+
+      if (result.success && result.query) {
+        this.onChange(result.query);
+      }
+    } catch (error) {
+      console.error("Error generating query:", error);
+    }
+  };
+
   render() {
     const {
       question,
@@ -427,9 +463,13 @@ export class NativeQueryEditor extends Component<
             {hasEditingSidebar && !readOnly && (
               <NativeQueryEditorSidebar
                 runQuery={this.runQuery}
-                features={sidebarFeatures}
+                features={{
+                  ...sidebarFeatures,
+                  aiQueryGeneration: true,
+                }}
                 onShowPromptInput={this.togglePromptVisibility}
                 onFormatQuery={this.formatQuery}
+                onGenerateQuery={this.handleGenerateQuery}
                 {...this.props}
               />
             )}

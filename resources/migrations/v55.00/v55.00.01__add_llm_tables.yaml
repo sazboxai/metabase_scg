@@ -20,6 +20,8 @@ databaseChangeLog:
               - column:
                   name: description
                   type: text
+                  constraints:
+                    nullable: true
               - column:
                   name: selected_tables
                   type: json
@@ -27,9 +29,9 @@ databaseChangeLog:
                     nullable: false
               - column:
                   name: status
-                  type: varchar(32)
+                  type: text
                   constraints:
-                    nullable: false
+                    nullable: true
               - column:
                   name: created_by
                   type: integer
@@ -44,6 +46,9 @@ databaseChangeLog:
               - column:
                   name: updated_at
                   type: timestamp
+                  constraints:
+                    nullable: false
+                    defaultValueComputed: now()
               - column:
                   name: prompt_file_path
                   type: text

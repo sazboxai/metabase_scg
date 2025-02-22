@@ -25,6 +25,7 @@ export type Features = {
   variables?: boolean;
   snippets?: boolean;
   promptInput?: boolean;
+  aiQueryGeneration?: boolean;
 };
 
 interface NativeQueryEditorSidebarProps {
@@ -48,6 +49,7 @@ interface NativeQueryEditorSidebarProps {
   toggleTemplateTagsEditor: () => void;
   toggleSnippetSidebar: () => void;
   onFormatQuery: () => void;
+  onGenerateQuery?: () => void;
 }
 
 export const NativeQueryEditorSidebar = (
@@ -65,6 +67,7 @@ export const NativeQueryEditorSidebar = (
     snippets,
     features,
     onFormatQuery,
+    onGenerateQuery,
   } = props;
 
   // hide the snippet sidebar if there aren't any visible snippets/collections
@@ -131,6 +134,18 @@ export const NativeQueryEditorSidebar = (
           compact
           getTooltip={getTooltip}
         />
+      )}
+      {features.aiQueryGeneration && (
+        <Tooltip tooltip={t`Generate SQL Query using AI`}>
+          <Button
+            className={NativeQueryEditorSidebarS.SidebarButton}
+            aria-label={t`Generate SQL Query`}
+            onClick={onGenerateQuery}
+            icon="robot"
+            iconSize={20}
+            onlyIcon
+          />
+        </Tooltip>
       )}
     </Box>
   );
