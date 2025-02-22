@@ -114,19 +114,12 @@
       (throw (ex-info (tru "Error upserting vector") {:cause (.getMessage e)})))))
 
 (defn query
-  "Query vectors in Pinecone index
-   index-name: name of the index
-   vector: the query vector
-   opts: options map with:
-     :top-k - number of results (default 10)
-     :include-values - include vector values (default false)
-     :include-metadata - include metadata (default true)"
+  "Query vectors in Pinecone index"
   [index-name vector {:keys [top-k include-values include-metadata]
                      :or {top-k 10
                          include-values false
                          include-metadata true}}]
   (try
-    (log/info "Querying vectors in index:" index-name)
     (ensure-index-exists! index-name)
     (let [host (get-pinecone-api-url index-name)
           response (client/post (str "https://" host "/query")
@@ -143,6 +136,5 @@
                        {:status (:status response)
                         :body (json/parse-string (:body response) true)}))))
     (catch Exception e
-      (log/error e (tru "Error querying vectors"))
       (throw (ex-info (tru "Error querying vectors") 
                      {:cause (.getMessage e)}))))) 

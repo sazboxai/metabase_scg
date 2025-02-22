@@ -119,14 +119,22 @@ If additional details are required to refine the query, ask clarifying questions
   [question index-name]
   (try
     (let [embeddings (openai/create-embeddings question)
-          ;; Use query instead of query-vectors! to match Pinecone's API
           context (pinecone/query index-name
                                 embeddings
                                 {:top-k 3
                                  :include-values false
                                  :include-metadata true})
-          ;; Format prompt with context and question
-          prompt (format sql-expert-prompt question)
+          
+          ;; Parse the response and extract texts
+          matches (get context "matches")
+          context-texts (map #(get-in % ["metadata" "text"]) matches)
+          combined-context (str/join "\n\n---\n\n" context-texts)
+          
+          ;; Format prompt with context AND question
+          prompt (format sql-expert-prompt 
+                        (str "\nContext:\n" combined-context 
+                             "\n\nQuestion:\n" question))
+          
           ;; Generate SQL query
           generated-query (openai/generate-text prompt)]
       {:success true
